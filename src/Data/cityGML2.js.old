@@ -1,0 +1,167 @@
+CityGL.CityGML = function(doc, documentUrl){
+	this.doc = doc;
+	this.documentURL = documentUrl;
+	this.bldg = 'http://www.opengis.net/citygml/building/1.0';
+	this.core = 'http://www.opengis.net/citygml/1.0';
+	this.app='http://www.opengis.net/citygml/appearance/1.0';
+}
+CityGL.CityGML.prototype = new CityGL.GML();
+CityGL.CityGML.prototype.constructor = CityGL.CityGML;
+CityGL.CityGML.prototype.Read= function(){
+		var object3Ds = [];		
+		var extent = this.ParseExtent(this.doc);
+		var buildings = this.doc.getElementsByTagNameNS(this.bldg, 'Building');
+		for (var i = 0; i< buildings.length; i++){
+			object3Ds.push(this.ParseBuilding(buildings[i]));
+		}
+		return object3Ds;
+	}
+CityGL.CityGML.prototype.ParseBuilding= function(building){
+	var buildingObject3D = new THREE.Object3D();// fill with outershell and rooms as Mesh with MeshFaceMaterial, each object will get name and properties
+	//var buildingGeometry = new THREE.Geometry();
+	var materials = this.ParseAppearance(building.getElementsByTagNameNS(this.app, 'appearance')[0].getElementsByTagNameNS(this.app, 'Appearance')[0]);
+	//var faceMeshMaterial = new THREE.MeshFaceMaterial(materials );
+	//outer shell
+	//	var mergeMesh = new THREE.Mesh();
+	
+	var nodes = building.getElementsByTagNameNS(this.bldg, 'boundedBy');
+	for (var i =0; i< building.childNodes.length; i++){
+		var node = building.childNodes[i];
+		if (node.localName =='boundedBy' && node.namespaceURI == this.bldg){
+			var walls = node.getElementsByTagNameNS(this.bldg, 'WallSurface');
+			for (var j = 0; j< walls.length; j++){
+				var multiSurfaceObject3Ds =this.ParseLODMultiSurface(walls[j], materials);
+				buildingObject3D.children =buildingObject3D.children.concat(multiSurfaceObject3Ds);
+			}
+			var roofs = node.getElementsByTagNameNS(this.bldg, 'RoofSurface');
+			for (var j = 0; j< roofs.length; j++){
+				var multiSurfaceObject3Ds =this.ParseLODMultiSurface(roofs[j], materials);
+				buildingObject3D.children =buildingObject3D.children.concat(multiSurfaceObject3Ds);
+			}
+			var floors = node.getElementsByTagNameNS(this.bldg, 'FloorSurface');
+			for (var j = 0; j< floors.length; j++){
+				var multiSurfaceObject3Ds =this.ParseLODMultiSurface(floors[j], materials);
+				buildingObject3D.children =buildingObject3D.children.concat(multiSurfaceObject3Ds);
+			}
+		}
+		else if(node.localName =='interiorRoom' && node.namespaceURI == this.bldg){
+			var roomObject3D  = new THREE.Object3D();			
+			var roomboundedbys = node.getElementsByTagNameNS(this.bldg, 'Room')[0].getElementsByTagNameNS(this.bldg, 'boundedBy');
+			for (var j = 0; j< roomboundedbys.length; j++){
+				var interiorWalls = roomboundedbys[j].getElementsByTagNameNS(this.bldg, 'InteriorWallSurface');
+				for (var k = 0; k< interiorWalls.length; k++){
+					var multiSurfaceObject3Ds =this.ParseLODMultiSurface(interiorWalls[k], materials);
+					roomObject3D.children = roomObject3D.children.concat(multiSurfaceObject3Ds);
+				}
+				var ceilings = roomboundedbys[j].getElementsByTagNameNS(this.bldg, 'CeilingSurface');
+				for (var k = 0; k< ceilings.length; k++){
+					var multiSurfaceObject3Ds =this.ParseLODMultiSurface(ceilings[k],materials);
+					roomObject3D.children = roomObject3D.children.concat(multiSurfaceObject3Ds);
+				}
+				var floors = roomboundedbys[j].getElementsByTagNameNS(this.bldg, 'FloorSurface');
+				for (var k = 0; k< floors.length; k++){
+					var multiSurfaceObject3Ds =this.ParseLODMultiSurface(floors[k],materials);
+					roomObject3D.children = roomObject3D.children.concat(multiSurfaceObject3Ds);
+				}
+			}			
+			buildingObject3D.children.push(roomObject3D);
+		}
+	}
+	//buildingObject3D.children.push(new THREE.Mesh( buildingGeometry,faceMeshMaterial) );
+	
+	return buildingObject3D;
+}
+CityGL.CityGML.prototype.ParseLODMultiSurface= function(lodsurface, materials){
+	var object3ds = [];
+	var s= lodsurface.getElementsByTagNameNS(this.gml, 'MultiSurface');
+	for(var i = 0; i< s.length; i++){
+		object3ds = object3ds.concat( this.ParseMultiSurface(s[i], materials));		
+	}
+	return object3ds;
+}
+CityGL.CityGML.prototype.ParseAppearance = function(appearance){
+	var appearances = [];
+	var surfaceDataMembers =appearance.getElementsByTagNameNS(this.app, 'surfaceDataMember');
+	for (var i =0; i< surfaceDataMembers.length; i++){
+		var x3Dmaterials = surfaceDataMembers[i].getElementsByTagNameNS(this.app, 'X3DMaterial');
+		for (var j =0; j< x3Dmaterials.length; j++){
+			appearances.push(this.ParseX3DMaterial(x3Dmaterials[j]));}
+		var parameterizedTextures = surfaceDataMembers[i].getElementsByTagNameNS(this.app,'ParameterizedTexture');
+		for (var j =0; j< parameterizedTextures.length; j++){
+			appearances.push(this.ParseParameterizedTexture(parameterizedTextures[j]));}
+		
+	}
+	//optimize for double images
+	var optimizedAppearances = [];
+	for (var i =0; i< appearances.length; i++){
+		if (appearances[i].hasOwnProperty('url')){
+			var j = 0;
+			for (j = 0; j< optimizedAppearances.length; j++){
+				if(optimizedAppearances[j].hasOwnProperty('url')){
+					if (appearances[i].url == optimizedAppearances[j].url){
+						for (var k = 0; k< appearances[i].targets.length; k++){
+							optimizedAppearances[j].targets.push(appearances[i].targets[k]);
+						}
+						break;
+					}
+				}				
+			}
+			if(j == optimizedAppearances.length){//no matching url found
+				optimizedAppearances.push(appearances[i]);
+			}
+		}
+		else{
+			optimizedAppearances.push(appearances[i]);
+		}		
+	}
+	return optimizedAppearances;
+}
+CityGL.CityGML.prototype.ParseX3DMaterial = function(x3DMaterial){
+	var diffuseColor = x3DMaterial.getElementsByTagNameNS(this.app, 'diffuseColor').length >0 ?this.ParseColor(x3DMaterial.getElementsByTagNameNS(this.app, 'diffuseColor')[0]): new THREE.Color( 0xffffff ) ;
+	var emissiveColor =x3DMaterial.getElementsByTagNameNS(this.app, 'emissiveColor').length >0 ? this.ParseColor(x3DMaterial.getElementsByTagNameNS(this.app, 'emissiveColor')[0]): new THREE.Color( 0xffffff );
+	var specularColor =x3DMaterial.getElementsByTagNameNS(this.app, 'specularColor').length >0 ? this.ParseColor(x3DMaterial.getElementsByTagNameNS(this.app, 'specularColor')[0]): new THREE.Color( 0xffffff );
+	var targets = [];
+	var tg = x3DMaterial.getElementsByTagNameNS(this.app, 'target');
+	for (var i =0; i< tg.length; i++){
+		var target = tg[i].childNodes[0].nodeValue;
+		targets.push({uri:target});
+	}
+	var material = new THREE.MeshPhongMaterial();
+	material.side = THREE.DoubleSide;
+	material.color = diffuseColor;
+	material.emissive = emissiveColor;
+	material.specular = specularColor;
+	material.targets = targets;
+	material.vertexColors= THREE.VertexColors;
+	return material;
+}
+CityGL.CityGML.prototype.ParseColor = function(color){
+	var c = new THREE.Color();
+	var colorString = color.childNodes[0].nodeValue.split(' ');
+	c.setRGB(parseFloat(colorString[0]), parseFloat(colorString[1]), parseFloat(colorString[2]));
+	return c;
+}
+CityGL.CityGML.prototype.ParseParameterizedTexture = function(pt){
+	var url = pt.getElementsByTagNameNS(this.app, 'imageURI')[0].childNodes[0].nodeValue;	
+	var texture = THREE.ImageUtils.loadTexture( url );
+	var targets = [];
+	var tg = pt.getElementsByTagNameNS(this.app, 'target');
+	for (var i = 0; i< tg.length; i++){
+		var uri = tg[i].attributes.GetNamedItem('uri').value;
+		var target = {uri: uri, textureCoordinates: []};
+		var texcoordlist = tg.getElementsByTagNameNS(this.app, 'TexCoordList')[0];
+		var texturecoordinates = texcoordlist.getElementsByTagNameNS(this.app, 'textureCoordinates').childNodes[0].nodeValue.split(' ');
+		for (var j = 0; j< texturecoordinates.length; j++){
+			target.textureCoordinates.push({x: parseFloat(texturecoordinates[j]), y: parseFloat(texturecoordinates[j++])});
+		}
+		targets.push(target);
+	}
+	var material = new THREE.MeshLambertMaterial( { map: texture, vertexColors: new THREE.Color( 0xffffff ) } );
+	material.side = THREE.DoubleSide;
+	material.url = url;
+	material.targets = targets;
+	return material;
+}
+	
+	
+	

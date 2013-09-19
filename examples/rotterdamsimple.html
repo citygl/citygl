@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>CityGL</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				font-family: Monospace;
+				background-color: #f0f0f0;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="viewport" style="position:absolute; left:0px; height:100%; width:100%;"></div>
+		<!--<script src="build/three.min.js"></script>-->
+		<script src="../../three/build/three.js"></script>
+		<script src="../../poly2tri/poly2tri.js"></script>
+		<script type="text/javascript" src="scripts/jquery-1.9.1.min.js"></script>
+		<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.2/themes/smoothness/jquery-ui.css" />
+		<script src="http://code.jquery.com/ui/1.10.2/jquery-ui.js"></script>
+		<script src="../../three/js/libs/stats.min.js"></script>
+		<script src="../../three/js/controls/FirstPersonControls.js"></script>
+        <script src="../../proj4js/lib/proj4js-combined.js"></script>
+		<script src="../src/citygl.js"></script>
+		<script src="../src/controls/FlyControls.js"></script>
+		<script src="../src/Viewport/viewport.js"></script>
+		<script src="../src/Layer/layer.js"></script>
+		<script src="../src/Layer/geometrylayer.js"></script>
+		<script src="../src/Layer/openstreetmap.js"></script>
+		<script src="../src/Data/gml.js"></script>
+		<script src="../src/Data/citygml.js"></script>
+		<script src="../src/Tools/query.js"></script>
+		<script src="../src/Util/parameterizedTexture.js"></script>
+		<script src="../src/Util/target.js"></script>
+		<script src="../src/Util/boundingbox.js"></script>
+		<script src="../src/Util/point.js"></script>		
+		<script src="../src/Util/tile.js"></script>
+		
+		<script>
+			//the open streetmap tiles will be reprojected to the Dutch Rijksdriekhoekstelsel, the proj definition  for RD needs to be set
+			Proj4js.defs["EPSG:28992"]='+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 +k=0.999908 +x_0=155000 +y_0=463000 +ellps=bessel +units=m +towgs84=565.2369,50.0087,465.658,-0.406857330322398,0.350732676542563,-1.8703473836068,4.0812 +no_defs <>';
+			
+			//this boundingbox limits the scene and is used to limit the OpenStreetMap basemap to
+			var ll = new CityGL.Point(92822.38619,435373.1405,-0.0004706665576);
+			var ur= new CityGL.Point(93842.60349,435990.04,135.5000884);
+			var boundingBox = new CityGL.BoundingBox(ll,ur);
+			
+			//the viewport is the element where the 3D scene will be projected into 2D
+			var viewport = new CityGL.ViewPort("viewport", boundingBox);
+			
+			//create the OpenStreetMap baselayer and add it to the viewport
+			var osm = new CityGL.OpenStreetMap({name: "OSM", });
+			viewport.AddLayer(osm);
+			
+			//standard jQuery request to the xml file
+			$.ajax({
+				type: "GET",				
+				url: "citygml.xml",
+				dataType: "xml",
+				success: function(response) {
+					//construct a CityGML reader, provide the full url of the cityGML file to get the texture images referred in the CityGML document
+					var cityGML = new CityGL.CityGML(response, "http://citygl.org/CityGL/citygl/examples/", {});
+					//read the file, using a small offset to avoid webgl glitches with geometries from basemap and CityGML being in the same plane
+					var object3ds = cityGML.Read(.1);
+					//construct a geometrylayer
+					var geomlayer = new CityGL.GeometryLayer({name: 'Rotterdam', EPSG:'EPSG:28992'});		
+					//add the parsed objects from the reader
+					geomlayer.addObject3Ds(object3ds);
+					//and add the layer to the viewport
+					viewport.AddLayer(geomlayer);
+					//start the animation
+					viewport.StartAnimating();
+					
+					//set the cameraposition and direction, in this case looking from the south at 100 height 
+					var position = new CityGL.Point(93522,435373,100);
+					var lookat= new CityGL.Point(93522.60349,435990,2);
+					//tell the viewport to relocate to this new position
+					viewport.MoveTo(position, lookat);
+					
+				}
+			});
+			
+		</script>
+
+	</body>
+</html>

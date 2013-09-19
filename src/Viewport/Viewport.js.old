@@ -1,0 +1,119 @@
+CityGL.ViewPort = function(div){
+	//needs clean
+	//var lowerCorner = $(child).find('lowerCorner').text().split(" ");
+	//var upperCorner = $(child).find('upperCorner').text().split(" ");
+	var lcText =  '235341.224471646 580388.097991126 0';
+	var ucText = '235428.930346646 580443.951064043 100';
+	var lowerCorner = lcText.split(" ");
+	var upperCorner = ucText.split(" ");
+	this.envelope = { lowerCorner :{X: parseFloat(lowerCorner[0]), Y: parseFloat(lowerCorner[1]), Z: parseFloat(lowerCorner[2])}, upperCorner: {X: parseFloat(upperCorner[0]), Y: parseFloat(upperCorner[1]), Z: parseFloat(upperCorner[2])}};
+		
+	
+	//end clean
+	this.Projection = 'EPSG:28992';
+	this.Extent = this.envelope;
+	this.isAnimating = false;
+	this.div = document.getElementById(div);
+	this.camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 10000 );
+	this.camera.position.set( 0, 150, 400 );
+	this.scene = new THREE.Scene();
+	this.clock = new THREE.Clock();
+	this.controls = new THREE.FlyControls( this.camera );
+
+	this.controls.movementSpeed = 50;
+	this.controls.domElement = this.div;
+	this.controls.rollSpeed = Math.PI / 24;
+	this.controls.autoForward = false;
+	this.controls.dragToLook = true;
+	var light = new THREE.DirectionalLight( 0xffffff );
+	light.position.set( 0, 0, 1 );
+	this.scene.add( light );
+	this.layers = [];
+	this.objects = new THREE.Object3D();
+	this.scene.add(this.objects);
+	this.renderer = new THREE.WebGLRenderer( { antialias: true } );
+	this.renderer.setSize( window.innerWidth, window.innerHeight );
+	this.div.appendChild( this.renderer.domElement );
+	this.stats = new Stats();
+	this.stats.domElement.style.position = 'absolute';
+	this.stats.domElement.style.top = '0px';
+	this.div.appendChild( this.stats.domElement );
+	this.onWindowResize = function () {	var windowHalfX = window.innerWidth / 2;var windowHalfY = window.innerHeight / 2;	this.camera.aspect = window.innerWidth / window.innerHeight;		this.camera.updateProjectionMatrix();			this.renderer.setSize( window.innerWidth, window.innerHeight );			}
+	window.addEventListener( 'resize', this.onWindowResize, false );
+}
+CityGL.ViewPort.prototype = {
+	constructor : CityGL.ViewPort,
+	
+	AddLayer: function(layer){
+		var object3ds = layer.GetObject3Ds('EPSG:28992',[234341.22,579388.06,236428.94,581444.00]);
+		for (var i = 0; i< object3ds.length; i++){			
+			this.Object3DToViewPort(object3ds[i]);
+			this.objects.add(object3ds[i]);
+		}
+		this.layers.push(layer);
+		
+	},	
+	Animate: function(){
+		var self = this;
+		var f = function (){
+			self.Animate();
+		}
+		if(this.isAnimating){
+			requestAnimationFrame( function(){
+				f();
+			} );
+			this.controls.update( this.clock.getDelta() );
+			this.renderer.render( this.scene, this.camera );
+			this.stats.update();
+		}
+	},
+	StartAnimating: function(){
+		if(!this.isAnimating){
+			this.isAnimating = true;
+			this.Animate();
+			}		
+	},
+	StopAnimating: function(){
+		this.isAnimating = false;
+	},
+	Object3DToViewPort: function(object3d){
+		for (var i = 0; i< object3d.children.length; i++){
+			var c = object3d.children[i]
+			if (c instanceof THREE.Mesh){
+				this.MeshToViewPort(object3d.children[i]);
+			}
+			else{
+				this.Object3DToViewPort(object3d.children[i]);				
+			}
+		}			
+	},
+	MeshToViewPort: function(mesh){
+		var g = mesh.geometry;
+		if (g instanceof THREE.BufferGeometry ){
+			for (var i = 0; i< g.attributes.position.array.length; i++){
+				var p = this.WorldToViewPort({x:g.attributes.position.array[i],y:g.attributes.position.array[i+1],z:g.attributes.position.array[i+2]});
+				g.attributes.position.array[i] = p.x;i++;
+				g.attributes.position.array[i] = p.y;i++;
+				g.attributes.position.array[i] = p.z;
+			}			
+		}
+		else{
+			for(var i = 0; i< mesh.geometry.vertices.length; i++){
+					mesh.geometry.vertices[i] = this.WorldToViewPort(mesh.geometry.vertices[i] );
+			}
+		}
+	},
+	WorldToViewPort: function(p){
+		var precision = .1; //metric system 
+		var xTotal = this.envelope.upperCorner.X - this.envelope.lowerCorner.X;
+		var yTotal = this.envelope.upperCorner.Y - this.envelope.lowerCorner.Y;
+		var zTotal = this.envelope.upperCorner.Z - this.envelope.lowerCorner.Z;
+		var xDist = p.x - this.envelope.lowerCorner.X  - xTotal / 2;
+		var yDist = p.y - this.envelope.lowerCorner.Y- yTotal / 2;
+		var zDist = p.z - this.envelope.lowerCorner.Z;
+		p.x =  xDist/precision;
+		p.y = yDist/precision;
+		p.z = zDist/precision;
+		return p;
+	}
+}
