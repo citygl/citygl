@@ -3,7 +3,7 @@ CityGL.ViewPort = function(div, boundingBox, options){
 	this.EPSG = 'EPSG:28992';
 	this.isAnimating = false;
 	this.div = document.getElementById(div);
-	this.camera = new THREE.PerspectiveCamera( 50, this.div.scrollWidth / this.div.scrollHeight, 1, 20000 );
+	this.camera = new THREE.PerspectiveCamera( 50, this.div.scrollWidth / this.div.scrollHeight, 1, 30000 );
 	this.camera.position.set( 0, 150, 400 );
 	this.scene = new THREE.Scene();
 	this.clock = new THREE.Clock();
@@ -32,12 +32,19 @@ CityGL.ViewPort = function(div, boundingBox, options){
 	this.div.appendChild( this.stats.domElement );
 	this.onResize = function () {	var windowHalfX = div.scrollWidth / 2;var windowHalfY = div.scrollHeight / 2;	this.camera.aspect =div.scrollWidth  / div.scrollHeight;		this.camera.updateProjectionMatrix();			this.renderer.setSize( div.scrollWidth,div.scrollHeight );			}
 	this.div.addEventListener( 'resize', this.onResize, false );
+	this.hemiLight = new THREE.HemisphereLight( 0xffffff, 0xffffff, 1.25 );
+	this.hemiLight.color.setHSL( 0.6, 1, 0.75 );
+	this.hemiLight.groundColor.setHSL( 0.1, 0.8, 0.7 );
+	this.scene.add( this.hemiLight );
+    this.skyDome = this.CreateSkyDome();
+	this.scene.add(this.skyDome );
+	
 	this.setValues(options);
 }
 CityGL.ViewPort.prototype = {
 	constructor : CityGL.ViewPort,
 	GetSize: function(){
-		return {width: div.scrollHeight, height: div.scrollHeight};
+		return {width: this.div.scrollHeight, height: this.div.scrollHeight};
 	},
 	MoveTo: function(p,l){
 		p = this.WorldToViewPort(p);
@@ -195,5 +202,24 @@ CityGL.ViewPort.prototype = {
 			this[ key ] = newValue;
 			}
 		}
+	},
+	CreateSkyDome: function (){
+		//copied from three.js example mrdoob
+		var fragmentShader = 'uniform vec3 topColor;uniform vec3 bottomColor;uniform float offset;uniform float exponent;varying vec3 vWorldPosition;void main() {float h = normalize( vWorldPosition + offset ).z;gl_FragColor = vec4( mix( bottomColor, topColor, max( pow( h, exponent ), 0.0 ) ), 1.0 );}';
+		var vertexShader = 'varying vec3 vWorldPosition;void main() {vec4 worldPosition = modelMatrix * vec4( position, 1.0 );vWorldPosition = worldPosition.xyz;gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );}';
+		var uniforms = {
+			topColor: 	 { type: "c", value: new THREE.Color( 0x0077ff ) },
+			bottomColor: { type: "c", value: new THREE.Color( 0xffffff ) },
+			offset:		 { type: "f", value: 400 },
+			exponent:	 { type: "f", value: 0.6 }
+		}
+		uniforms.topColor.value.copy( this.hemiLight.color );
+		var skyGeo = new THREE.SphereGeometry( 20000, 32, 15 );
+	
+		//var skyGeo  = this.CreateSphereGeometry( 10000, 32, 15 );
+		var skyMat = new THREE.ShaderMaterial( { vertexShader: vertexShader, fragmentShader: fragmentShader, uniforms: uniforms, side: THREE.BackSide } );
+		var sky = new THREE.Mesh( skyGeo, skyMat );
+		return sky;
 	}
+	
 }
