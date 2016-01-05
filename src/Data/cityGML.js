@@ -16,6 +16,9 @@ CityGL.CityGML.prototype.Read= function(){
 		var extent = this.ParseExtent(this.doc);
 		//get the appearances
 		var apps =  this.doc.getElementsByTagNameNS(this.app, 'appearance');
+		if (0 == apps.length) {
+			apps =  this.doc.getElementsByTagNameNS(this.app, 'appearanceMember');
+		}
 		var appearances = this.ParseAppearance(apps);
 		var buildings = this.doc.getElementsByTagNameNS(this.bldg, 'Building');
 		
